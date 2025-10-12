@@ -8,5 +8,8 @@ import (
 
 func AuthRoutes(incomingRoutes *gin.Engine) {
 	incomingRoutes.POST("auth/signup", controllers.Signup())
+	incomingRoutes.POST("auth/register", controllers.RegisterWithOtp())
+	incomingRoutes.POST("auth/verify-account", controllers.VerifyAccount())
+	incomingRoutes.POST("auth/resend-otp", controllers.ResendOtp())
 	incomingRoutes.POST("auth/login", controllers.Login())
 }

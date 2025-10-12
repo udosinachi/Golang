@@ -17,10 +17,11 @@ type User struct {
 	Password   string             `bson:"password" validate:"required,min=6"`
 	IsAdmin    bool               `bson:"isAdmin" default:"false"`
 	IsVerified bool               `bson:"isVerified" default:"false"`
-	LastLogin  time.Time          `bson:"lastLogin"`
-	Otp        int                `bson:"otp"`
-	OtpExpire  time.Time          `bson:"otpExpire"`
+	LastLogin  *time.Time         `bson:"lastLogin"`
+	Otp        *int               `bson:"otp"`
+	OtpExpire  *time.Time         `bson:"otpExpire"`
 	CreatedAt  time.Time          `bson:"createdAt"`
+	UpdatedAt  *time.Time         `bson:"updatedAt"`
 }
 
 // create a validator instance

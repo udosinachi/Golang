@@ -15,36 +15,33 @@ import (
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "users")
 
-func GetUser(c *gin.Context) (models.User, error) {
+func GetUser(c *gin.Context) (*models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 	var foundUser models.User
 
-	// Retrieve the ID from the context
-	id, exists := c.Get("uid") // Updated from "uid" to "id"
+	id, exists := c.Get("uid")
 	if !exists {
-		return foundUser, fmt.Errorf("ID not found in context")
+		return nil, fmt.Errorf("ID not found in context")
 	}
 
-	// Convert the ID to a string
 	idStr, ok := id.(string)
 	if !ok {
-		return foundUser, fmt.Errorf("invalid ID format")
+		return nil, fmt.Errorf("invalid ID format")
 	}
 
-	// Convert the string ID to a MongoDB ObjectID
 	objID, err := primitive.ObjectIDFromHex(idStr)
 	if err != nil {
-		return foundUser, fmt.Errorf("invalid ObjectID: %v", err)
+		return nil, fmt.Errorf("invalid ObjectID: %v", err)
 	}
 
 	// Query MongoDB using the ObjectID
 	err = userCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&foundUser)
 	if err != nil {
-		return foundUser, fmt.Errorf("user not found: %v", err)
+		return nil, fmt.Errorf("user not found: %v", err)
 	}
 
-	return foundUser, nil
+	return &foundUser, nil
 }
 
 func GetUserByID(id string) (models.User, error) {
