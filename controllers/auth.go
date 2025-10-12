@@ -11,37 +11,40 @@ import (
 	"udo-golang/models"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
-
-var validate = validator.New()
+var userCollection *mongo.Collection = database.OpenCollection(database.Client, "users")
 
 func Signup() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Create a context with timeout and defer cancel immediately
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		var user models.User
+		// Struct to receive the signup payload
+		var input struct {
+			FirstName string `json:"firstName" binding:"required"`
+			LastName  string `json:"lastName" binding:"required"`
+			Email     string `json:"email" binding:"required,email"`
+			Password  string `json:"password" binding:"required,min=6"`
+			IsAdmin   bool   `json:"isAdmin"`
+		}
 
-		// Bind incoming JSON to the user model
-		if err := c.BindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "hasError": true})
+		// Bind JSON request body
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload", "error": err.Error(), "hasError": true})
 			return
 		}
 
-		user.Email = strings.ToLower(user.Email)
+		email := strings.ToLower(input.Email)
 
-		// Check if the email already exists in the collection
-		count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
+		// Check if email already exists
+		count, err := userCollection.CountDocuments(ctx, bson.M{"email": email})
 		if err != nil {
-			log.Printf("Error checking for email existence: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Error occurred while checking for the email", "hasError": true})
+			log.Printf("Error checking for existing user: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Server error while checking email", "hasError": true})
 			return
 		}
 		if count > 0 {
@@ -49,92 +52,132 @@ func Signup() gin.HandlerFunc {
 			return
 		}
 
-		user.ID = primitive.NewObjectID()
-		user.IsAdmin = false
-		user.IsVerified = false
-		user.CreatedAt = time.Now()
-
-		// Generate tokens using the email and the hex representation of the ObjectID
-		token, refreshToken, err := helpers.GenerateAllTokens(user.Email, user.ID.Hex())
+		// Hash password
+		hashedPassword, err := helpers.HashPassword(input.Password)
 		if err != nil {
-			log.Printf("Error generating tokens for user %s: %v", user.ID.Hex(), err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+			log.Printf("Error hashing password: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to process password", "hasError": true})
 			return
 		}
 
-		// Hash the user's password before storing it
-		hashedPass, hashErr := helpers.HashPassword(user.Password)
+		// Create new user model
+		newUser := models.User{
+			ID:         primitive.NewObjectID(),
+			FirstName:  input.FirstName,
+			LastName:   input.LastName,
+			Email:      email,
+			Password:   hashedPassword,
+			IsAdmin:    input.IsAdmin,
+			IsVerified: false,
+			CreatedAt:  time.Now(),
+		}
 
-		if hashErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"message": hashErr.Error(), "hasError": true})
+		// Generate tokens
+		token, refreshToken, err := helpers.GenerateAllTokens(newUser.Email, newUser.ID.Hex())
+		if err != nil {
+			log.Printf("Error generating tokens: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to generate tokens", "hasError": true})
 			return
 		}
 
-		user.Password = hashedPass
-
-		if validationErr := user.ValidateUser(); validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"message": validationErr.Error(), "hasError": true})
+		// Insert into DB
+		result, err := userCollection.InsertOne(ctx, newUser)
+		if err != nil {
+			log.Printf("Error inserting user: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to create user", "hasError": true})
 			return
 		}
 
-		// Insert the user document into the database
-		resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
-		if insertErr != nil {
-			log.Printf("Error inserting user: %v, %v", insertErr, user)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "User item was not created", "hasError": true})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"message":      "Registration successful",
-			"data":         user,
+		// Return a safe response (no password)
+		response := gin.H{
+			"id":           newUser.ID,
+			"firstName":    newUser.FirstName,
+			"lastName":     newUser.LastName,
+			"email":        newUser.Email,
+			"isAdmin":      newUser.IsAdmin,
+			"isVerified":   newUser.IsVerified,
+			"createdAt":    newUser.CreatedAt,
 			"token":        token,
 			"refreshToken": refreshToken,
+			"insertId":     result.InsertedID,
 			"hasError":     false,
-			"insertId":     resultInsertionNumber.InsertedID,
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"message": "Registration successful",
+			"data":    response,
 		})
 	}
 }
 
 func Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		var user models.User
+
+		var loginRequest struct {
+			Email    string `json:"email" binding:"required,email"`
+			Password string `json:"password" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&loginRequest); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload", "error": err.Error(), "hasError": true})
+			return
+		}
+
+		email := strings.ToLower(loginRequest.Email)
+
+		// Find user
 		var foundUser models.User
-
-		if err := c.BindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-			return
-		}
-		user.Email = strings.ToLower(user.Email)
-		user.LastLogin = time.Now()
-
-		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
-
+		err := userCollection.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"message": "email or password is incorrect", "error": err.Error(), "hasError": true})
+			log.Printf("Login error (find): %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password", "hasError": true})
 			return
 		}
 
-		passwordIsValid, msg := helpers.VerifyPassword(user.Password, foundUser.Password)
-
+		// Verify password
+		passwordIsValid, msg := helpers.VerifyPassword(loginRequest.Password, foundUser.Password)
 		if !passwordIsValid {
 			c.JSON(http.StatusUnauthorized, gin.H{"message": msg, "hasError": true})
 			return
 		}
 
-		if foundUser.Email == "" {
-			c.JSON(http.StatusNotFound, gin.H{"message": "user not found", "hasError": true})
-			return
-		}
+		// Generate tokens
 		token, refreshToken, err := helpers.GenerateAllTokens(foundUser.Email, foundUser.ID.Hex())
-
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error(), "hasError": true})
+			log.Printf("Login error (token generation): %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to generate authentication tokens", "hasError": true})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Login successful", "data": foundUser, "token": token, "refreshToken": refreshToken, "hasError": false})
+		// Update last login timestamp
+		foundUser.LastLogin = time.Now()
+		_, updateErr := userCollection.UpdateOne(
+			ctx,
+			bson.M{"_id": foundUser.ID},
+			bson.M{"$set": bson.M{"last_login": foundUser.LastLogin}},
+		)
+		if updateErr != nil {
+			log.Printf("Failed to update last login: %v", updateErr)
+		}
+
+		// Prepare safe response
+		response := gin.H{
+			"id":           foundUser.ID,
+			"firstName":    foundUser.FirstName,
+			"lastName":     foundUser.LastName,
+			"email":        foundUser.Email,
+			"isAdmin":      foundUser.IsAdmin,
+			"isVerified":   foundUser.IsVerified,
+			"lastLogin":    foundUser.LastLogin,
+			"token":        token,
+			"refreshToken": refreshToken,
+			"hasError":     false,
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Login successful",
+			"data":    response,
+		})
 	}
 }

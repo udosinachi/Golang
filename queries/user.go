@@ -13,7 +13,7 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
-var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
+var userCollection *mongo.Collection = database.OpenCollection(database.Client, "users")
 
 func GetUser(c *gin.Context) (models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)

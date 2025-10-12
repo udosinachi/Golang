@@ -15,12 +15,12 @@ type User struct {
 	LastName   string             `bson:"lastName"  validate:"required"`
 	Email      string             `bson:"email" validate:"required,email"`
 	Password   string             `bson:"password" validate:"required,min=6"`
-	IsAdmin    bool               `bson:"isAdmin" validate:"required"`
-	IsVerified bool               `bson:"isVerified" validate:"required"`
+	IsAdmin    bool               `bson:"isAdmin" default:"false"`
+	IsVerified bool               `bson:"isVerified" default:"false"`
 	LastLogin  time.Time          `bson:"lastLogin"`
 	Otp        int                `bson:"otp"`
 	OtpExpire  time.Time          `bson:"otpExpire"`
-	CreatedAt  time.Time          `bson:"created_at"`
+	CreatedAt  time.Time          `bson:"createdAt"`
 }
 
 // create a validator instance
@@ -30,4 +30,4 @@ func (u *User) ValidateUser() error {
 	return validate.Struct(u)
 }
 
-var UserCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
+var UserCollection *mongo.Collection = database.OpenCollection(database.Client, "users")
