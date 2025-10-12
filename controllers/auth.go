@@ -34,7 +34,12 @@ func Signup() gin.HandlerFunc {
 
 		// Bind JSON request body
 		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload", "error": err.Error(), "hasError": true})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Invalid request payload",
+				"error":   err.Error(),
+				"success": false,
+			})
 			return
 		}
 
@@ -44,11 +49,19 @@ func Signup() gin.HandlerFunc {
 		count, err := userCollection.CountDocuments(ctx, bson.M{"email": email})
 		if err != nil {
 			log.Printf("Error checking for existing user: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Server error while checking email", "hasError": true})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Server error while checking email",
+				"success": false,
+			})
 			return
 		}
 		if count > 0 {
-			c.JSON(http.StatusConflict, gin.H{"message": "This email already exists", "hasError": true})
+			c.JSON(http.StatusConflict, gin.H{
+				"status":  http.StatusConflict,
+				"message": "This email already exists",
+				"success": false,
+			})
 			return
 		}
 
@@ -56,7 +69,11 @@ func Signup() gin.HandlerFunc {
 		hashedPassword, err := helpers.HashPassword(input.Password)
 		if err != nil {
 			log.Printf("Error hashing password: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to process password", "hasError": true})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to process password",
+				"success": false,
+			})
 			return
 		}
 
@@ -76,7 +93,11 @@ func Signup() gin.HandlerFunc {
 		token, refreshToken, err := helpers.GenerateAllTokens(newUser.Email, newUser.ID.Hex())
 		if err != nil {
 			log.Printf("Error generating tokens: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to generate tokens", "hasError": true})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to generate tokens",
+				"sucess":  false,
+			})
 			return
 		}
 
@@ -84,7 +105,11 @@ func Signup() gin.HandlerFunc {
 		result, err := userCollection.InsertOne(ctx, newUser)
 		if err != nil {
 			log.Printf("Error inserting user: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to create user", "hasError": true})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to create user",
+				"success": false,
+			})
 			return
 		}
 
@@ -100,12 +125,13 @@ func Signup() gin.HandlerFunc {
 			"token":        token,
 			"refreshToken": refreshToken,
 			"insertId":     result.InsertedID,
-			"hasError":     false,
 		}
 
 		c.JSON(http.StatusCreated, gin.H{
+			"status":  http.StatusCreated,
 			"message": "Registration successful",
 			"data":    response,
+			"success": true,
 		})
 	}
 }
@@ -120,7 +146,11 @@ func Login() gin.HandlerFunc {
 			Password string `json:"password" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&loginRequest); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload", "error": err.Error(), "hasError": true})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Invalid request payload",
+				"error":   err.Error(),
+				"success": false})
 			return
 		}
 
@@ -131,14 +161,21 @@ func Login() gin.HandlerFunc {
 		err := userCollection.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser)
 		if err != nil {
 			log.Printf("Login error (find): %v", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password", "hasError": true})
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"status":  http.StatusUnauthorized,
+				"message": "Invalid email or password",
+				"sucess":  false,
+			})
 			return
 		}
 
-		// Verify password
 		passwordIsValid, msg := helpers.VerifyPassword(loginRequest.Password, foundUser.Password)
 		if !passwordIsValid {
-			c.JSON(http.StatusUnauthorized, gin.H{"message": msg, "hasError": true})
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"status":  http.StatusUnauthorized,
+				"message": msg,
+				"success": false,
+			})
 			return
 		}
 
@@ -146,7 +183,11 @@ func Login() gin.HandlerFunc {
 		token, refreshToken, err := helpers.GenerateAllTokens(foundUser.Email, foundUser.ID.Hex())
 		if err != nil {
 			log.Printf("Login error (token generation): %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to generate authentication tokens", "hasError": true})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to generate authentication tokens",
+				"success": false,
+			})
 			return
 		}
 
@@ -155,7 +196,7 @@ func Login() gin.HandlerFunc {
 		_, updateErr := userCollection.UpdateOne(
 			ctx,
 			bson.M{"_id": foundUser.ID},
-			bson.M{"$set": bson.M{"last_login": foundUser.LastLogin}},
+			bson.M{"$set": bson.M{"lastLogin": foundUser.LastLogin}},
 		)
 		if updateErr != nil {
 			log.Printf("Failed to update last login: %v", updateErr)
@@ -172,12 +213,13 @@ func Login() gin.HandlerFunc {
 			"lastLogin":    foundUser.LastLogin,
 			"token":        token,
 			"refreshToken": refreshToken,
-			"hasError":     false,
 		}
 
 		c.JSON(http.StatusOK, gin.H{
+			"status":  http.StatusOK,
 			"message": "Login successful",
 			"data":    response,
+			"success": true,
 		})
 	}
 }

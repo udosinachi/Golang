@@ -1,7 +1,6 @@
 package helpers
 
 import (
-	"fmt"
 	"log"
 	"udo-golang/database"
 
@@ -78,8 +77,7 @@ func ValidateToken(signedToken string) (claims *SignedDetails, msg string) {
 
 	claims, ok := token.Claims.(*SignedDetails)
 	if !ok {
-		msg = fmt.Sprintf("the token is invalid")
-		msg = err.Error()
+		msg = "The token is Invalid"
 		return
 	}
 
