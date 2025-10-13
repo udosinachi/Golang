@@ -2,83 +2,84 @@ package queries
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 	"udo-golang/database"
 	models "udo-golang/models"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"gopkg.in/mgo.v2/bson"
 )
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "users")
 
-func GetUser(c *gin.Context) (*models.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-	defer cancel()
-	var foundUser models.User
+func newCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 15*time.Second)
+}
 
+func toObjectID(id string) (primitive.ObjectID, error) {
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return primitive.NilObjectID, fmt.Errorf("invalid ObjectID: %w", err)
+	}
+	return objID, nil
+}
+
+func GetUser(c *gin.Context) (*models.User, error) {
 	id, exists := c.Get("uid")
 	if !exists {
-		return nil, fmt.Errorf("ID not found in context")
+		return nil, errors.New("ID not found in context")
 	}
 
 	idStr, ok := id.(string)
 	if !ok {
-		return nil, fmt.Errorf("invalid ID format")
+		return nil, errors.New("invalid ID format in context")
 	}
 
-	objID, err := primitive.ObjectIDFromHex(idStr)
+	return GetUserByID(idStr)
+}
+
+func GetUserByID(id string) (*models.User, error) {
+	ctx, cancel := newCtx()
+	defer cancel()
+
+	objID, err := toObjectID(id)
 	if err != nil {
-		return nil, fmt.Errorf("invalid ObjectID: %v", err)
+		return nil, err
 	}
 
-	// Query MongoDB using the ObjectID
+	var foundUser models.User
 	err = userCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&foundUser)
 	if err != nil {
-		return nil, fmt.Errorf("user not found: %v", err)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
 	return &foundUser, nil
 }
 
-func GetUserByID(id string) (models.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+func GetUserByEmail(email string) (*models.User, error) {
+	ctx, cancel := newCtx()
 	defer cancel()
+
 	var foundUser models.User
-
-	// Convert the string ID to a MongoDB ObjectID
-	objID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return foundUser, fmt.Errorf("invalid ObjectID: %v", err)
-	}
-
-	// Query MongoDB using the ObjectID
-	err = userCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&foundUser)
-	if err != nil {
-		return foundUser, fmt.Errorf("user not found: %v", err)
-	}
-
-	return foundUser, nil
-}
-
-func GetUserByEmail(email string) (models.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-	defer cancel()
-	var foundUser models.User
-
-	// Query MongoDB using the email
 	err := userCollection.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser)
 	if err != nil {
-		return foundUser, fmt.Errorf("user not found: %v", err)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
-	return foundUser, nil
+	return &foundUser, nil
 }
 
-func UpdateUser(userId string, user models.User) error {
+func UpdateUser(userId string, update bson.M) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -88,51 +89,47 @@ func UpdateUser(userId string, user models.User) error {
 	}
 
 	filter := bson.M{"_id": objID}
+	updateDoc := bson.M{"$set": update}
 
-	update := bson.M{"$set": user}
-
-	result, err := userCollection.UpdateOne(ctx, filter, update)
+	result, err := userCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
-		return fmt.Errorf("failed to update goal description: %w", err)
+		return fmt.Errorf("failed to update user: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("no goal found with the given ID")
+		return fmt.Errorf("no user found with the given ID")
 	}
 
 	return nil
 }
 
 func DeleteUser(userId string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := newCtx()
 	defer cancel()
 
-	objID, err := primitive.ObjectIDFromHex(userId)
+	objID, err := toObjectID(userId)
 	if err != nil {
-		return fmt.Errorf("invalid user ID: %w", err)
+		return err
 	}
 
-	filter := bson.M{"_id": objID}
-
-	result := userCollection.FindOneAndDelete(ctx, filter)
+	result := userCollection.FindOneAndDelete(ctx, bson.M{"_id": objID})
 	if err := result.Err(); err != nil {
-		if err == mongo.ErrNoDocuments {
-			return fmt.Errorf("user not found: %w", err)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return fmt.Errorf("user not found")
 		}
-		return err
+		return fmt.Errorf("failed to delete user: %w", err)
 	}
 
 	return nil
 }
 
 func GetUserCount(filter bson.M) (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	ctx, cancel := newCtx()
 	defer cancel()
 
-	total, err := userCollection.CountDocuments(ctx, filter)
+	count, err := userCollection.CountDocuments(ctx, filter)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to count users: %w", err)
 	}
-
-	return int(total), nil
+	return int(count), nil
 }

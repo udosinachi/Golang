@@ -13,6 +13,7 @@ import (
 	"udo-golang/database"
 	"udo-golang/helpers"
 	"udo-golang/models"
+	"udo-golang/queries"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -50,19 +51,10 @@ func Signup() gin.HandlerFunc {
 		email := strings.ToLower(input.Email)
 
 		// Check if email already exists
-		count, err := userCollection.CountDocuments(ctx, bson.M{"email": email})
-		if err != nil {
-			log.Printf("Error checking for existing user: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status":  http.StatusInternalServerError,
-				"message": "Server error while checking email",
-				"success": false,
-			})
-			return
-		}
-		if count > 0 {
-			c.JSON(http.StatusConflict, gin.H{
-				"status":  http.StatusConflict,
+		_, err := queries.GetUserByEmail(email)
+		if err == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"status":  http.StatusUnauthorized,
 				"message": "This email already exists",
 				"success": false,
 			})
@@ -167,20 +159,10 @@ func RegisterWithOtp() gin.HandlerFunc {
 
 		email := strings.ToLower(input.Email)
 
-		// Check if email already exists
-		count, err := userCollection.CountDocuments(ctx, bson.M{"email": email})
-		if err != nil {
-			log.Printf("Error checking for existing user: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status":  http.StatusInternalServerError,
-				"message": "Server error while checking email",
-				"success": false,
-			})
-			return
-		}
-		if count > 0 {
-			c.JSON(http.StatusConflict, gin.H{
-				"status":  http.StatusConflict,
+		_, err := queries.GetUserByEmail(email)
+		if err == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"status":  http.StatusUnauthorized,
 				"message": "This email already exists",
 				"success": false,
 			})
@@ -245,16 +227,11 @@ func RegisterWithOtp() gin.HandlerFunc {
 
 func VerifyAccount() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		// Struct to receive the signup payload
 		var input struct {
 			Email string `json:"email" binding:"required,email"`
 			Otp   int    `json:"otp" binding:"required"`
 		}
 
-		// Bind JSON request body
 		if err := c.ShouldBindJSON(&input); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status":  http.StatusBadRequest,
@@ -267,21 +244,18 @@ func VerifyAccount() gin.HandlerFunc {
 
 		email := strings.ToLower(input.Email)
 
-		// Check if email exists
-		var foundUser models.User
-		err := userCollection.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser)
+		foundUser, err := queries.GetUserByEmail(email)
 		if err != nil {
-			log.Printf("Login error (find): %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"status":  http.StatusUnauthorized,
-				"message": "User Account does not exist",
-				"sucess":  false,
+				"message": "User account does not exist",
+				"success": false,
 			})
 			return
 		}
 
 		if foundUser.Otp == nil || *foundUser.Otp != input.Otp {
-			c.JSON(http.StatusUnauthorized, gin.H{
+			c.JSON(http.StatusBadRequest, gin.H{
 				"status":  http.StatusBadRequest,
 				"message": "Invalid OTP",
 				"success": false,
@@ -289,20 +263,26 @@ func VerifyAccount() gin.HandlerFunc {
 			return
 		}
 
-		if foundUser.Otp != nil && *foundUser.Otp == input.Otp && foundUser.OtpExpire != nil && (*foundUser.OtpExpire).After(time.Now()) {
-			foundUser.IsVerified = true
-			_, updateErr := userCollection.UpdateOne(
-				ctx,
-				bson.M{"_id": foundUser.ID},
-				bson.M{"$set": bson.M{"isVerified": true}},
-			)
-			if updateErr != nil {
-				log.Printf("Failed to verify account: %v", updateErr)
-			}
-		} else if foundUser.OtpExpire != nil && !(*foundUser.OtpExpire).After(time.Now()) {
+		if foundUser.OtpExpire == nil || time.Now().After(*foundUser.OtpExpire) {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"status":  http.StatusUnauthorized,
 				"message": "OTP has expired",
+				"success": false,
+			})
+			return
+		}
+
+		updateData := bson.M{
+			"isVerified": true,
+			"otp":        nil,
+			"otpExpire":  nil,
+		}
+
+		if err := queries.UpdateUser(foundUser.ID.Hex(), updateData); err != nil {
+			log.Printf("Failed to verify account: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to complete account verification",
 				"success": false,
 			})
 			return
@@ -314,12 +294,12 @@ func VerifyAccount() gin.HandlerFunc {
 			"lastName":   foundUser.LastName,
 			"email":      foundUser.Email,
 			"isAdmin":    foundUser.IsAdmin,
-			"isVerified": foundUser.IsVerified,
+			"isVerified": true,
 		}
 
-		c.JSON(http.StatusCreated, gin.H{
-			"status":  http.StatusCreated,
-			"message": "Account Verification Completed",
+		c.JSON(http.StatusOK, gin.H{
+			"status":  http.StatusOK,
+			"message": "Account verification completed successfully",
 			"success": true,
 			"data":    response,
 		})
@@ -328,10 +308,6 @@ func VerifyAccount() gin.HandlerFunc {
 
 func ResendOtp() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		// Struct to receive the signup payload
 		var input struct {
 			Email string `json:"email" binding:"required,email"`
 		}
@@ -350,8 +326,7 @@ func ResendOtp() gin.HandlerFunc {
 		email := strings.ToLower(input.Email)
 
 		// Check if email exists
-		var foundUser models.User
-		err := userCollection.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser)
+		foundUser, err := queries.GetUserByEmail(email)
 		if err != nil {
 			log.Printf("Login error (find): %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -369,15 +344,12 @@ func ResendOtp() gin.HandlerFunc {
 		fmt.Println(otpExpire)
 
 		update := bson.M{
-			"$set": bson.M{
-				"otp":       otp,
-				"otpExpire": otpExpire,
-			},
+			"otp":       otp,
+			"otpExpire": otpExpire,
 		}
 
-		_, updateErr := userCollection.UpdateOne(ctx, bson.M{"_id": foundUser.ID}, update)
-		if updateErr != nil {
-			log.Printf("Failed to update OTP: %v", updateErr)
+		if err := queries.UpdateUser(foundUser.ID.Hex(), update); err != nil {
+			log.Printf("Failed to update OTP: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status":  http.StatusInternalServerError,
 				"message": "Failed to resend OTP",
@@ -398,33 +370,30 @@ func ResendOtp() gin.HandlerFunc {
 
 func Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
 		var loginRequest struct {
 			Email    string `json:"email" binding:"required,email"`
 			Password string `json:"password" binding:"required"`
 		}
+
 		if err := c.ShouldBindJSON(&loginRequest); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status":  http.StatusBadRequest,
 				"message": "Invalid request payload",
 				"error":   err.Error(),
-				"success": false})
+				"success": false,
+			})
 			return
 		}
 
 		email := strings.ToLower(loginRequest.Email)
 
-		// Find user
-		var foundUser models.User
-		err := userCollection.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser)
+		foundUser, err := queries.GetUserByEmail(email)
 		if err != nil {
 			log.Printf("Login error (find): %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"status":  http.StatusUnauthorized,
 				"message": "Invalid email or password",
-				"sucess":  false,
+				"success": false,
 			})
 			return
 		}
@@ -440,18 +409,17 @@ func Login() gin.HandlerFunc {
 		}
 
 		if !foundUser.IsVerified {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"status":  http.StatusUnauthorized,
-				"message": "Account Verification is Incomplete",
+			c.JSON(http.StatusForbidden, gin.H{
+				"status":  http.StatusForbidden,
+				"message": "Account verification incomplete",
 				"success": false,
 			})
 			return
 		}
 
-		// Generate tokens
 		token, refreshToken, err := helpers.GenerateAllTokens(foundUser.Email, foundUser.ID.Hex())
 		if err != nil {
-			log.Printf("Login error (token generation): %v", err)
+			log.Printf("Token generation error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status":  http.StatusInternalServerError,
 				"message": "Failed to generate authentication tokens",
@@ -460,19 +428,11 @@ func Login() gin.HandlerFunc {
 			return
 		}
 
-		// Update last login timestamp
 		now := time.Now()
-		foundUser.LastLogin = &now
-		_, updateErr := userCollection.UpdateOne(
-			ctx,
-			bson.M{"_id": foundUser.ID},
-			bson.M{"$set": bson.M{"lastLogin": foundUser.LastLogin}},
-		)
-		if updateErr != nil {
-			log.Printf("Failed to update last login: %v", updateErr)
+		if err := queries.UpdateUser(foundUser.ID.Hex(), bson.M{"lastLogin": &now}); err != nil {
+			log.Printf("Failed to update last login: %v", err)
 		}
 
-		// Prepare safe response
 		response := gin.H{
 			"id":           foundUser.ID,
 			"firstName":    foundUser.FirstName,
@@ -480,7 +440,7 @@ func Login() gin.HandlerFunc {
 			"email":        foundUser.Email,
 			"isAdmin":      foundUser.IsAdmin,
 			"isVerified":   foundUser.IsVerified,
-			"lastLogin":    foundUser.LastLogin,
+			"lastLogin":    now,
 			"token":        token,
 			"refreshToken": refreshToken,
 		}
