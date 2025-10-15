@@ -8,7 +8,6 @@ import (
 	"udo-golang/database"
 	models "udo-golang/models"
 
-	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -17,7 +16,7 @@ import (
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "users")
 
 func newCtx() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), 15*time.Second)
+	return context.WithTimeout(context.Background(), 10*time.Second)
 }
 
 func toObjectID(id string) (primitive.ObjectID, error) {
@@ -28,18 +27,22 @@ func toObjectID(id string) (primitive.ObjectID, error) {
 	return objID, nil
 }
 
-func GetUser(c *gin.Context) (*models.User, error) {
-	id, exists := c.Get("uid")
-	if !exists {
-		return nil, errors.New("ID not found in context")
+func GetAllUsers() ([]models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cursor, err := userCollection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch users: %v", err)
+	}
+	defer cursor.Close(ctx)
+
+	var users []models.User
+	if err = cursor.All(ctx, &users); err != nil {
+		return nil, fmt.Errorf("failed to decode users: %v", err)
 	}
 
-	idStr, ok := id.(string)
-	if !ok {
-		return nil, errors.New("invalid ID format in context")
-	}
-
-	return GetUserByID(idStr)
+	return users, nil
 }
 
 func GetUserByID(id string) (*models.User, error) {

@@ -26,8 +26,11 @@ func main() {
 	router := gin.Default()
 	router.Use(middleware.CORSMiddleware())
 
-	// Register routes
+	// Public Routes
 	routes.AuthRoutes(router)
+
+	// Private Routes
+	routes.UserRoutes(router)
 
 	fmt.Println("🚀 Server is running on port:", port)
 

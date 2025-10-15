@@ -18,7 +18,7 @@ type User struct {
 	IsAdmin    bool               `bson:"isAdmin" default:"false"`
 	IsVerified bool               `bson:"isVerified" default:"false"`
 	LastLogin  *time.Time         `bson:"lastLogin"`
-	Otp        *int               `bson:"otp"`
+	Otp        *string            `bson:"otp"`
 	OtpExpire  *time.Time         `bson:"otpExpire"`
 	CreatedAt  time.Time          `bson:"createdAt"`
 	UpdatedAt  *time.Time         `bson:"updatedAt"`

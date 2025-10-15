@@ -183,6 +183,7 @@ func RegisterWithOtp() gin.HandlerFunc {
 
 		n, _ := rand.Int(rand.Reader, big.NewInt(1000000))
 		otp := int(n.Int64())
+		otpString := strconv.Itoa(otp)
 		otpExpire := time.Now().Add(5 * time.Minute)
 		fmt.Println(otp)
 		fmt.Println(otpExpire)
@@ -197,7 +198,7 @@ func RegisterWithOtp() gin.HandlerFunc {
 			IsAdmin:    input.IsAdmin,
 			IsVerified: false,
 			CreatedAt:  time.Now(),
-			Otp:        &otp,
+			Otp:        &otpString,
 			OtpExpire:  &otpExpire,
 		}
 
@@ -215,7 +216,7 @@ func RegisterWithOtp() gin.HandlerFunc {
 
 		fmt.Println(result)
 
-		message := "An OTP has been sent to your email address for account verification " + strconv.Itoa(otp)
+		message := "An OTP has been sent to your email address for account verification " + otpString
 
 		c.JSON(http.StatusCreated, gin.H{
 			"status":  http.StatusCreated,
@@ -229,7 +230,7 @@ func VerifyAccount() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			Email string `json:"email" binding:"required,email"`
-			Otp   int    `json:"otp" binding:"required"`
+			Otp   string `json:"otp" binding:"required"`
 		}
 
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -328,7 +329,7 @@ func ResendOtp() gin.HandlerFunc {
 		// Check if email exists
 		foundUser, err := queries.GetUserByEmail(email)
 		if err != nil {
-			log.Printf("Login error (find): %v", err)
+			log.Printf("Resend OTP error (find): %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"status":  http.StatusUnauthorized,
 				"message": "User Account does not exist",
@@ -339,12 +340,13 @@ func ResendOtp() gin.HandlerFunc {
 
 		n, _ := rand.Int(rand.Reader, big.NewInt(1000000))
 		otp := int(n.Int64())
+		otpString := strconv.Itoa(otp)
 		otpExpire := time.Now().Add(5 * time.Minute)
 		fmt.Println(otp)
 		fmt.Println(otpExpire)
 
 		update := bson.M{
-			"otp":       otp,
+			"otp":       otpString,
 			"otpExpire": otpExpire,
 		}
 
@@ -358,7 +360,7 @@ func ResendOtp() gin.HandlerFunc {
 			return
 		}
 
-		message := "An OTP has been sent to your email address for account verification " + strconv.Itoa(otp)
+		message := "An OTP has been sent to your email address for account verification " + otpString
 
 		c.JSON(http.StatusCreated, gin.H{
 			"status":  http.StatusCreated,
