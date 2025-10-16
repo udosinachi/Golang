@@ -92,6 +92,11 @@ func DeleteUser() gin.HandlerFunc {
 func UpdateUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
+		var input struct {
+			FirstName string `json:"firstName" binding:"required"`
+			LastName  string `json:"lastName" binding:"required"`
+			IsAdmin   bool   `json:"isAdmin"`
+		}
 
 		_, getUserErr := queries.GetUserByID(id)
 		if getUserErr != nil {
@@ -104,11 +109,21 @@ func UpdateUser() gin.HandlerFunc {
 			return
 		}
 
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Invalid request payload",
+				"error":   err.Error(),
+				"success": false,
+			})
+			return
+		}
+
 		update := bson.M{
-			"isVerified": true,
-			"otp":        nil,
-			"otpExpire":  nil,
-			"updatedAt":  time.Now(),
+			"firstName": input.FirstName,
+			"lastName":  input.LastName,
+			"isAdmin":   input.IsAdmin,
+			"updatedAt": time.Now(),
 		}
 
 		err := queries.UpdateUser(id, update)
@@ -118,6 +133,7 @@ func UpdateUser() gin.HandlerFunc {
 				"status":  http.StatusBadRequest,
 				"success": false,
 				"message": "Unable to Update this User",
+				"error":   err.Error(),
 			})
 			return
 		}
@@ -125,7 +141,7 @@ func UpdateUser() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  http.StatusOK,
 			"success": true,
-			"message": "User Deleted Successfully",
+			"message": "User Updated Successfully",
 		})
 	}
 }
