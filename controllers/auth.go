@@ -86,7 +86,7 @@ func Signup() gin.HandlerFunc {
 		}
 
 		// Generate tokens
-		token, refreshToken, err := helpers.GenerateAllTokens(newUser.Email, newUser.ID.Hex())
+		token, refreshToken, err := helpers.GenerateAllTokens(newUser.Email, newUser.ID.Hex(), newUser.IsAdmin)
 		if err != nil {
 			log.Printf("Error generating tokens: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -419,7 +419,7 @@ func Login() gin.HandlerFunc {
 			return
 		}
 
-		token, refreshToken, err := helpers.GenerateAllTokens(foundUser.Email, foundUser.ID.Hex())
+		token, refreshToken, err := helpers.GenerateAllTokens(foundUser.Email, foundUser.ID.Hex(), foundUser.IsAdmin)
 		if err != nil {
 			log.Printf("Token generation error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
