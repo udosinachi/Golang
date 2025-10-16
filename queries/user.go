@@ -28,14 +28,18 @@ func toObjectID(id string) (primitive.ObjectID, error) {
 	return objID, nil
 }
 
-func GetAllUsers() ([]models.User, error) {
+func GetAllUsers(page int, pageSize int, filter bson.M) ([]models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	opts := options.Find().
-		SetSort(bson.M{"createdAt": -1})
+	skip := (page - 1) * pageSize
 
-	cursor, err := userCollection.Find(ctx, bson.M{}, opts)
+	opts := options.Find().
+		SetSort(bson.M{"createdAt": -1}).
+		SetSkip(int64(skip)).
+		SetLimit(int64(pageSize))
+
+	cursor, err := userCollection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch users: %v", err)
 	}

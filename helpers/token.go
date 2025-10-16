@@ -15,9 +15,6 @@ type SignedDetails struct {
 	IsAdmin bool   `json:"isAdmin"`
 	jwt.StandardClaims
 }
-type AuthService interface {
-	ValidateToken(signedToken string) (*SignedDetails, string)
-}
 
 var SECRET_KEY = os.Getenv("JWT_SECRET_KEY")
 

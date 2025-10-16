@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 	"udo-golang/queries"
 
@@ -12,7 +13,52 @@ import (
 
 func GetAllUsers() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		allUsers, err := queries.GetAllUsers()
+
+		page := 1
+		pageSize := 10
+
+		if p := c.Query("page"); p != "" {
+			if val, err := strconv.Atoi(p); err == nil && val > 0 {
+				page = val
+			}
+		}
+
+		if pS := c.Query("pageSize"); pS != "" {
+			if val, err := strconv.Atoi(pS); err == nil && val > 0 {
+				pageSize = val
+			}
+		}
+
+		search := c.Query("search")
+		startDate := c.Query("startDate")
+		endDate := c.Query("endDate")
+
+		filter := bson.M{}
+
+		if search != "" {
+			filter["$or"] = []bson.M{
+				{"firstName": bson.M{"$regex": search, "$options": "i"}},
+				{"lastName": bson.M{"$regex": search, "$options": "i"}},
+				{"email": bson.M{"$regex": search, "$options": "i"}},
+			}
+		}
+
+		dateFilter := bson.M{}
+		if startDate != "" {
+			if start, err := time.Parse("2006-01-02", startDate); err == nil {
+				dateFilter["$gte"] = start
+			}
+		}
+		if endDate != "" {
+			if end, err := time.Parse("2006-01-02", endDate); err == nil {
+				dateFilter["$lte"] = end.Add(24 * time.Hour)
+			}
+		}
+		if len(dateFilter) > 0 {
+			filter["createdAt"] = dateFilter
+		}
+
+		allUsers, err := queries.GetAllUsers(page, pageSize, filter)
 		if err != nil {
 			fmt.Println(err)
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -24,11 +70,37 @@ func GetAllUsers() gin.HandlerFunc {
 			return
 		}
 
+		totalCount, _ := queries.GetUserCount(filter)
+
+		totalPages := (totalCount + pageSize - 1) / pageSize
+
+		if allUsers == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"status":  http.StatusOK,
+				"success": true,
+				"message": "No Users Found",
+				"data":    []string{},
+				"metaData": gin.H{
+					"page":       page,
+					"pageSize":   pageSize,
+					"total":      totalCount,
+					"totalPages": totalPages,
+				},
+			})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"status":  http.StatusOK,
 			"success": true,
 			"message": "Users Fetched Successfully",
 			"data":    allUsers,
+			"metaData": gin.H{
+				"page":       page,
+				"pageSize":   pageSize,
+				"total":      totalCount,
+				"totalPages": totalPages,
+			},
 		})
 	}
 }
