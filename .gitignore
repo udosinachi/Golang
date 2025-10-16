@@ -1,3 +1,4 @@
 Golang
 .env
 .DS_Store
+tmp/

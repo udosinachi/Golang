@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "users")
@@ -31,7 +32,10 @@ func GetAllUsers() ([]models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cursor, err := userCollection.Find(ctx, bson.M{})
+	opts := options.Find().
+		SetSort(bson.M{"createdAt": -1})
+
+	cursor, err := userCollection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch users: %v", err)
 	}
@@ -106,7 +110,7 @@ func UpdateUser(userId string, update bson.M) error {
 	return nil
 }
 
-func DeleteUser(userId string) error {
+func DeleteUserById(userId string) error {
 	ctx, cancel := newCtx()
 	defer cancel()
 

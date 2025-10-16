@@ -10,21 +10,20 @@ import (
 )
 
 type User struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty"`
-	FirstName  string             `bson:"firstName" validate:"required"`
-	LastName   string             `bson:"lastName"  validate:"required"`
-	Email      string             `bson:"email" validate:"required,email"`
-	Password   string             `bson:"password" validate:"required,min=6"`
-	IsAdmin    bool               `bson:"isAdmin" default:"false"`
-	IsVerified bool               `bson:"isVerified" default:"false"`
-	LastLogin  *time.Time         `bson:"lastLogin"`
-	Otp        *string            `bson:"otp"`
-	OtpExpire  *time.Time         `bson:"otpExpire"`
-	CreatedAt  time.Time          `bson:"createdAt"`
-	UpdatedAt  *time.Time         `bson:"updatedAt"`
+	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
+	FirstName  string             `bson:"firstName" json:"firstName" validate:"required"`
+	LastName   string             `bson:"lastName" json:"lastName" validate:"required"`
+	Email      string             `bson:"email" json:"email" validate:"required,email"`
+	Password   string             `bson:"password,omitempty" json:"-" validate:"required,min=6"`
+	IsAdmin    bool               `bson:"isAdmin" json:"isAdmin"`
+	IsVerified bool               `bson:"isVerified" json:"isVerified"`
+	LastLogin  *time.Time         `bson:"lastLogin,omitempty" json:"lastLogin"`
+	Otp        *string            `bson:"otp,omitempty" json:"otp"`
+	OtpExpire  *time.Time         `bson:"otpExpire,omitempty" json:"otpExpire"`
+	CreatedAt  time.Time          `bson:"createdAt,omitempty" json:"createdAt"`
+	UpdatedAt  *time.Time         `bson:"updatedAt,omitempty" json:"updatedAt"`
 }
 
-// create a validator instance
 var validate = validator.New()
 
 func (u *User) ValidateUser() error {

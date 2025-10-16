@@ -8,4 +8,6 @@ import (
 
 func UserRoutes(incomingRoutes *gin.Engine) {
 	incomingRoutes.GET("users", controllers.GetAllUsers())
+	incomingRoutes.GET("users/:id", controllers.GetUser())
+	incomingRoutes.DELETE("delete-user/:id", controllers.DeleteUser())
 }
