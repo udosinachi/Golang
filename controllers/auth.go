@@ -418,7 +418,7 @@ func VerifyAccount() gin.HandlerFunc {
 	}
 }
 
-func ResendOtp() gin.HandlerFunc {
+func SendOtp() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			Email string `json:"email" binding:"required,email"`
@@ -562,6 +562,110 @@ func Login() gin.HandlerFunc {
 			"status":  http.StatusOK,
 			"message": "Login successful",
 			"data":    response,
+			"success": true,
+		})
+	}
+}
+
+func ResetPassword() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var input struct {
+			Email           string `json:"email" binding:"required,email"`
+			Otp             string `json:"otp" binding:"required" `
+			Password        string `json:"password" binding:"required"`
+			ConfirmPassword string `json:"confirmPassword" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Invalid request payload",
+				"error":   err.Error(),
+				"success": false,
+			})
+			return
+		}
+
+		email := strings.ToLower(input.Email)
+
+		foundUser, err := queries.GetUserByEmail(email)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "User account does not exist",
+				"success": false,
+			})
+			return
+		}
+
+		if foundUser.Otp == nil || *foundUser.Otp != input.Otp {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Invalid OTP",
+				"success": false,
+			})
+			return
+		}
+
+		if foundUser.OtpExpire == nil || time.Now().After(*foundUser.OtpExpire) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "OTP has expired",
+				"success": false,
+			})
+			return
+		}
+
+		if len(input.Password) < 6 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Password must be at least 6 characters",
+				"success": false,
+			})
+			return
+		}
+
+		if input.Password != input.ConfirmPassword {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Password and Confirm Password must match",
+				"success": false,
+			})
+			return
+		}
+
+		hashedPassword, err := helpers.HashPassword(input.Password)
+		if err != nil {
+			log.Printf("Error hashing password: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to process password",
+				"success": false,
+			})
+			return
+		}
+
+		updateData := bson.M{
+			"isVerified": true,
+			"otp":        nil,
+			"otpExpire":  nil,
+			"updatedAt":  time.Now(),
+			"password":   hashedPassword,
+		}
+
+		if err := queries.UpdateUser(foundUser.ID.Hex(), updateData); err != nil {
+			log.Printf("Failed to verify account: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to Reset Password",
+				"success": false,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  http.StatusOK,
+			"message": "Password reset successful",
 			"success": true,
 		})
 	}
