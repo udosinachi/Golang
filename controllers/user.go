@@ -32,6 +32,8 @@ func GetAllUsers() gin.HandlerFunc {
 		search := c.Query("search")
 		startDate := c.Query("startDate")
 		endDate := c.Query("endDate")
+		isAdmin := c.Query("isAdmin")
+		isVerified := c.Query("isVerified")
 
 		filter := bson.M{}
 
@@ -56,6 +58,22 @@ func GetAllUsers() gin.HandlerFunc {
 		}
 		if len(dateFilter) > 0 {
 			filter["createdAt"] = dateFilter
+		}
+
+		if isAdmin != "" {
+			isAdminValue, err := strconv.ParseBool(isAdmin)
+			if err == nil {
+				filter["isAdmin"] = isAdminValue
+			}
+		}
+
+		if isVerified != "" {
+			isVerifiedValue, err := strconv.ParseBool(isVerified)
+			if err == nil {
+				filter["isVerified"] = isVerifiedValue
+
+			}
+
 		}
 
 		allUsers, err := queries.GetAllUsers(page, pageSize, filter)
