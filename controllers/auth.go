@@ -670,3 +670,96 @@ func ResetPassword() gin.HandlerFunc {
 		})
 	}
 }
+
+func ChangePassword() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var input struct {
+			Email              string `json:"email" binding:"required,email"`
+			OldPassword        string `json:"oldPassword" binding:"required" `
+			NewPassword        string `json:"newPassword" binding:"required"`
+			ConfirmNewPassword string `json:"confirmNewPassword" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Invalid request payload",
+				"error":   err.Error(),
+				"success": false,
+			})
+			return
+		}
+
+		email := strings.ToLower(input.Email)
+
+		foundUser, err := queries.GetUserByEmail(email)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "User account does not exist",
+				"success": false,
+			})
+			return
+		}
+
+		passwordIsValid, _ := helpers.VerifyPassword(input.OldPassword, foundUser.Password)
+		if !passwordIsValid {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Old Password is incorrect",
+				"success": false,
+			})
+			return
+		}
+
+		if len(input.NewPassword) < 6 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Password must be at least 6 characters",
+				"success": false,
+			})
+			return
+		}
+
+		if input.NewPassword != input.ConfirmNewPassword {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "New Password and Confirm New Password must match",
+				"success": false,
+			})
+			return
+		}
+
+		hashedPassword, err := helpers.HashPassword(input.NewPassword)
+		if err != nil {
+			log.Printf("Error hashing password: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to process password",
+				"success": false,
+			})
+			return
+		}
+
+		updateData := bson.M{
+			"updatedAt": time.Now(),
+			"password":  hashedPassword,
+		}
+
+		if err := queries.UpdateUser(foundUser.ID.Hex(), updateData); err != nil {
+			log.Printf("Failed to verify account: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to Change Password",
+				"success": false,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  http.StatusOK,
+			"message": "Password change successful",
+			"success": true,
+		})
+	}
+}
