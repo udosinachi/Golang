@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"context"
 	"crypto/rand"
 	"fmt"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"udo-golang/database"
 	"udo-golang/helpers"
 	"udo-golang/models"
 	"udo-golang/queries"
@@ -18,16 +16,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
-
-var userCollection *mongo.Collection = database.OpenCollection(database.Client, "users")
 
 func Signup() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
 		// Struct to receive the signup payload
 		var input struct {
 			FirstName string `json:"firstName" binding:"required"`
@@ -53,8 +45,8 @@ func Signup() gin.HandlerFunc {
 		// Check if email already exists
 		_, err := queries.GetUserByEmail(email)
 		if err == nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"status":  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
 				"message": "This email already exists",
 				"success": false,
 			})
@@ -98,7 +90,7 @@ func Signup() gin.HandlerFunc {
 		}
 
 		// Insert into DB
-		result, err := userCollection.InsertOne(ctx, newUser)
+		result, err := queries.CreateNewUser(&newUser)
 		if err != nil {
 			log.Printf("Error inserting user: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -134,9 +126,6 @@ func Signup() gin.HandlerFunc {
 
 func RegisterWithOtp() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
 		// Struct to receive the signup payload
 		var input struct {
 			FirstName string `json:"firstName" binding:"required"`
@@ -161,8 +150,8 @@ func RegisterWithOtp() gin.HandlerFunc {
 
 		_, err := queries.GetUserByEmail(email)
 		if err == nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"status":  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
 				"message": "This email already exists",
 				"success": false,
 			})
@@ -203,7 +192,7 @@ func RegisterWithOtp() gin.HandlerFunc {
 		}
 
 		// Insert into DB
-		result, err := userCollection.InsertOne(ctx, newUser)
+		result, err := queries.CreateNewUser(&newUser)
 		if err != nil {
 			log.Printf("Error inserting user: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -221,6 +210,128 @@ func RegisterWithOtp() gin.HandlerFunc {
 		c.JSON(http.StatusCreated, gin.H{
 			"status":  http.StatusCreated,
 			"message": message,
+			"success": true,
+		})
+	}
+}
+
+func GoogleSignUpandSignIn() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		accessToken := c.Query("access_token")
+		if accessToken == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Access token is required",
+				"success": false,
+			})
+			return
+		}
+
+		userInfo, err := queries.GetGoogleUserInfo(accessToken)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Error fetching Google user info",
+				"error":   err.Error(),
+				"success": false,
+			})
+			return
+		}
+
+		email, _ := userInfo["email"].(string)
+		id, _ := userInfo["id"].(string)
+		name, _ := userInfo["name"].(string)
+
+		parts := strings.Fields(name)
+
+		firstName := ""
+		lastName := ""
+
+		if len(parts) > 0 {
+			firstName = parts[0]
+		}
+		if len(parts) > 1 {
+			lastName = parts[len(parts)-1]
+		}
+
+		if email == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
+				"message": "Email not found in Google profile",
+				"success": false,
+			})
+			return
+		}
+
+		signedToken, err := helpers.SignJWt(email, id, false)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Error generating token",
+				"error":   err.Error(),
+				"success": false,
+			})
+			return
+		}
+
+		foundUser, err := queries.GetUserByEmail(email)
+		if err == nil {
+			now := time.Now()
+			if err := queries.UpdateUser(foundUser.ID.Hex(), bson.M{"lastLogin": &now}); err != nil {
+				log.Printf("Failed to update last login: %v", err)
+			}
+
+			response := gin.H{
+				"id":         foundUser.ID,
+				"firstName":  foundUser.FirstName,
+				"lastName":   foundUser.LastName,
+				"email":      foundUser.Email,
+				"isAdmin":    foundUser.IsAdmin,
+				"isVerified": foundUser.IsVerified,
+				"lastLogin":  now,
+				"token":      signedToken,
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"status":  http.StatusOK,
+				"message": "Login successful",
+				"data":    response,
+				"success": true,
+			})
+			return
+		}
+
+		newUser := models.User{
+			ID:         primitive.NewObjectID(),
+			FirstName:  firstName,
+			LastName:   lastName,
+			Email:      email,
+			Password:   "",
+			IsAdmin:    false,
+			IsVerified: true,
+			CreatedAt:  time.Now(),
+		}
+
+		result, err := queries.CreateNewUser(&newUser)
+		if err != nil {
+			log.Printf("Error inserting user: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  http.StatusInternalServerError,
+				"message": "Failed to create user",
+				"success": false,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  http.StatusOK,
+			"message": "User Created Successful",
+			"data": gin.H{
+				"id":    result.InsertedID,
+				"name":  name,
+				"email": email,
+				"token": signedToken,
+			},
 			"success": true,
 		})
 	}
@@ -247,8 +358,8 @@ func VerifyAccount() gin.HandlerFunc {
 
 		foundUser, err := queries.GetUserByEmail(email)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"status":  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
 				"message": "User account does not exist",
 				"success": false,
 			})
@@ -265,8 +376,8 @@ func VerifyAccount() gin.HandlerFunc {
 		}
 
 		if foundUser.OtpExpire == nil || time.Now().After(*foundUser.OtpExpire) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"status":  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
 				"message": "OTP has expired",
 				"success": false,
 			})
@@ -330,8 +441,8 @@ func ResendOtp() gin.HandlerFunc {
 		foundUser, err := queries.GetUserByEmail(email)
 		if err != nil {
 			log.Printf("Resend OTP error (find): %v", err)
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"status":  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
 				"message": "User Account does not exist",
 				"sucess":  false,
 			})
@@ -392,8 +503,8 @@ func Login() gin.HandlerFunc {
 		foundUser, err := queries.GetUserByEmail(email)
 		if err != nil {
 			log.Printf("Login error (find): %v", err)
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"status":  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
 				"message": "Invalid email or password",
 				"success": false,
 			})
@@ -402,8 +513,8 @@ func Login() gin.HandlerFunc {
 
 		passwordIsValid, msg := helpers.VerifyPassword(loginRequest.Password, foundUser.Password)
 		if !passwordIsValid {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"status":  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  http.StatusBadRequest,
 				"message": msg,
 				"success": false,
 			})

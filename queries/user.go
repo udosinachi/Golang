@@ -2,8 +2,11 @@ package queries
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 	"udo-golang/database"
 	models "udo-golang/models"
@@ -143,4 +146,37 @@ func GetUserCount(filter bson.M) (int, error) {
 		return 0, fmt.Errorf("failed to count users: %w", err)
 	}
 	return int(count), nil
+}
+
+func CreateNewUser(newUser *models.User) (*mongo.InsertOneResult, error) {
+	ctx, cancel := newCtx()
+	defer cancel()
+
+	result, err := userCollection.InsertOne(ctx, newUser)
+	if err != nil {
+		return nil, fmt.Errorf("error creating user: %v", err)
+	}
+
+	return result, nil
+
+}
+
+func GetGoogleUserInfo(accessToken string) (map[string]interface{}, error) {
+	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var userInfo map[string]interface{}
+	if err := json.Unmarshal(body, &userInfo); err != nil {
+		return nil, err
+	}
+
+	return userInfo, nil
 }

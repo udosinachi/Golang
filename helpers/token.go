@@ -82,3 +82,20 @@ func ValidateToken(signedToken string) (*SignedDetails, string) {
 
 	return claims, ""
 }
+
+func SignJWt(email, userID string, isAdmin bool) (string, error) {
+	claims := jwt.MapClaims{
+		"email":   email,
+		"id":      userID,
+		"isAdmin": isAdmin,
+		"exp":     time.Now().Add(time.Hour * 24).Unix(),
+		"iat":     time.Now().Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signToken, err := token.SignedString([]byte(SECRET_KEY))
+	if err != nil {
+		return "", err
+	}
+	return signToken, nil
+}
