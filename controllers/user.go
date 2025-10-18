@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"udo-golang/helpers"
 	"udo-golang/queries"
 
 	"github.com/gin-gonic/gin"
@@ -13,21 +14,7 @@ import (
 
 func GetAllUsers() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
-		page := 1
-		pageSize := 10
-
-		if p := c.Query("page"); p != "" {
-			if val, err := strconv.Atoi(p); err == nil && val > 0 {
-				page = val
-			}
-		}
-
-		if pS := c.Query("pageSize"); pS != "" {
-			if val, err := strconv.Atoi(pS); err == nil && val > 0 {
-				pageSize = val
-			}
-		}
+		page, pageSize := helpers.ExtractPagination(c, 10)
 
 		search := c.Query("search")
 		startDate := c.Query("startDate")
@@ -90,35 +77,23 @@ func GetAllUsers() gin.HandlerFunc {
 
 		totalCount, _ := queries.GetUserCount(filter)
 
-		totalPages := (totalCount + pageSize - 1) / pageSize
-
 		if allUsers == nil {
 			c.JSON(http.StatusOK, gin.H{
-				"status":  http.StatusOK,
-				"success": true,
-				"message": "No Users Found",
-				"data":    []string{},
-				"metaData": gin.H{
-					"page":       page,
-					"pageSize":   pageSize,
-					"total":      totalCount,
-					"totalPages": totalPages,
-				},
+				"status":   http.StatusOK,
+				"success":  true,
+				"message":  "No Users Found",
+				"data":     []string{},
+				"metaData": helpers.CreatePaginationResponse(page, pageSize, int64(totalCount)),
 			})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"status":  http.StatusOK,
-			"success": true,
-			"message": "Users Fetched Successfully",
-			"data":    allUsers,
-			"metaData": gin.H{
-				"page":       page,
-				"pageSize":   pageSize,
-				"total":      totalCount,
-				"totalPages": totalPages,
-			},
+			"status":   http.StatusOK,
+			"success":  true,
+			"message":  "Users Fetched Successfully",
+			"data":     allUsers,
+			"metaData": helpers.CreatePaginationResponse(page, pageSize, int64(totalCount)),
 		})
 	}
 }

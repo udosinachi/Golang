@@ -32,7 +32,7 @@ func toObjectID(id string) (primitive.ObjectID, error) {
 }
 
 func GetAllUsers(page int, pageSize int, filter bson.M) ([]models.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := newCtx()
 	defer cancel()
 
 	skip := (page - 1) * pageSize
