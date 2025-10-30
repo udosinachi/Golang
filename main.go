@@ -1,3 +1,50 @@
+// package main
+
+// import (
+// 	"fmt"
+// 	"log"
+// 	"os"
+// 	"udo-golang/middleware"
+// 	"udo-golang/routes"
+
+// 	"github.com/gin-gonic/gin"
+// 	"github.com/joho/godotenv"
+// )
+
+// func main() {
+// 	godotenv.Load(".env")
+// 	uri := os.Getenv("MONGODB_ATLAS_URI")
+// 	if uri == "" {
+// 		log.Fatal("MONGODB_ATLAS_URI not found in environment")
+// 	}
+
+// 	if err := godotenv.Load(".env"); err != nil {
+// 		log.Println("Warning: .env file not found, using system environment variables.")
+// 	}
+
+// 	gin.SetMode(gin.ReleaseMode)
+
+// 	port := os.Getenv("PORT")
+// 	if port == "" {
+// 		log.Fatal("PORT is not set in the environment")
+// 	}
+
+// 	router := gin.Default()
+// 	router.Use(middleware.CORSMiddleware())
+
+// 	// Public Routes
+// 	routes.AuthRoutes(router)
+
+// 	// Private Routes
+// 	routes.UserRoutes(router)
+
+// 	fmt.Println("🚀 Server is running on port:", port)
+
+// 	if err := router.Run(":" + port); err != nil {
+// 		log.Fatal("Failed to start server:", err)
+// 	}
+// }
+
 package main
 
 import (
@@ -40,7 +87,7 @@ func main() {
 	}
 
 	UserRepository := userRepo.NewUserRepository(mc.DB)
-	UserService := userService.NewServer(UserRepository)
+	UserService := userService.NewUserService(UserRepository)
 	AuthService := authService.NewService(UserRepository, "rwewfyuieowoo")
 
 	httpServer := http.NewServer(UserService, AuthService)
@@ -57,30 +104,4 @@ func main() {
 
 	log.Println("Server up")
 	wg.Wait()
-
-	// if err := godotenv.Load(".env"); err != nil {
-	// 	log.Println("Warning: .env file not found, using system environment variables.")
-	// }
-
-	// gin.SetMode(gin.ReleaseMode)
-
-	// port := os.Getenv("PORT")
-	// if port == "" {
-	// 	log.Fatal("PORT is not set in the environment")
-	// }
-
-	// router := gin.Default()
-	// router.Use(middleware.CORSMiddleware())
-
-	// // Public Routes
-	// routes.AuthRoutes(router)
-
-	// // Private Routes
-	// routes.UserRoutes(router)
-
-	// fmt.Println("🚀 Server is running on port:", port)
-
-	// if err := router.Run(":" + port); err != nil {
-	// 	log.Fatal("Failed to start server:", err)
-	// }
 }

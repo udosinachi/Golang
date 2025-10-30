@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type service struct {
@@ -33,48 +34,48 @@ func (s *service) Signup(ctx context.Context, u *repo.User, body SignUpDto) (*re
 	if validationErr != nil {
 		return nil, nil, validationErr
 	}
+
 	u.Email = strings.ToLower(u.Email)
 
-	_, err := s.userRepo.GetByEmail(ctx, body.Email)
-
-	if err != nil {
-		return nil, nil, err
+	existingUser, err := s.userRepo.GetByEmailRepo(ctx, u.Email)
+	if err == nil && existingUser != nil {
+		return nil, nil, errors.New("email already in use")
 	}
-
-	token, _, err := token.GenerateAllTokens(u.Email, u.ID.Hex(), u.IsAdmin)
-	if err != nil {
+	if err != nil && err != mongo.ErrNoDocuments {
 		return nil, nil, err
-	}
-
-	hashedPass, hashErr := password.HashPassword(u.Password)
-
-	if hashErr != nil {
-
-		return nil, nil, errors.New("unable to hash password")
 	}
 
 	u.ID = primitive.NewObjectID()
 	u.FirstName = body.FirstName
 	u.LastName = body.LastName
-	u.Email = body.Email
+	u.Email = strings.ToLower(body.Email)
 	u.IsVerified = true
-	u.Password = hashedPass
 	u.IsAdmin = body.IsAdmin
 	u.CreatedAt = time.Now()
 
-	user, createErr := s.userRepo.Create(ctx, *u)
+	hashedPass, hashErr := password.HashPassword(u.Password)
+	if hashErr != nil {
+		return nil, nil, errors.New("unable to hash password")
+	}
+	u.Password = hashedPass
 
+	sToken, _, err := token.GenerateAllTokens(u.Email, u.ID.Hex(), u.IsAdmin)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	user, createErr := s.userRepo.CreateUserRepo(ctx, *u)
 	if createErr != nil {
 		return nil, nil, createErr
 	}
 
-	return user, &token, nil
+	return user, &sToken, nil
 }
 
 func (s *service) Login(ctx context.Context, u LoginDTO) (*repo.User, *string, error) {
 	u.Email = strings.ToLower(u.Email)
 
-	user, err := s.userRepo.GetByEmail(ctx, u.Email)
+	user, err := s.userRepo.GetByEmailRepo(ctx, u.Email)
 
 	if err != nil {
 		return nil, nil, commonErrors.ErrWrongEmail

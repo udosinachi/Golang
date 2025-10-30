@@ -21,10 +21,10 @@ type repository struct {
 }
 
 func NewUserRepository(db *mongo.Database) Repository {
-	return &repository{col: db.Collection("user")}
+	return &repository{col: db.Collection("users")}
 }
 
-func (r *repository) GetAllUsers(ctx context.Context, page int, pageSize int, filter bson.M) ([]User, error) {
+func (r *repository) GetAllUsersRepo(ctx context.Context, page int, pageSize int, filter bson.M) ([]User, error) {
 
 	skip := (page - 1) * pageSize
 
@@ -47,7 +47,7 @@ func (r *repository) GetAllUsers(ctx context.Context, page int, pageSize int, fi
 	return users, nil
 }
 
-func (r *repository) GetUserByID(ctx context.Context, id string) (*User, error) {
+func (r *repository) GetUserByIDRepo(ctx context.Context, id string) (*User, error) {
 	var foundUser User
 	if err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&foundUser); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -59,7 +59,7 @@ func (r *repository) GetUserByID(ctx context.Context, id string) (*User, error) 
 	return &user, nil
 }
 
-func (r *repository) Create(ctx context.Context, u User) (*User, error) {
+func (r *repository) CreateUserRepo(ctx context.Context, u User) (*User, error) {
 	doc := u
 	res, err := r.col.InsertOne(ctx, doc)
 	if err != nil {
@@ -72,9 +72,8 @@ func (r *repository) Create(ctx context.Context, u User) (*User, error) {
 	return &out, nil
 }
 
-func (r *repository) GetByEmail(ctx context.Context, email string) (*User, error) {
+func (r *repository) GetByEmailRepo(ctx context.Context, email string) (*User, error) {
 	var foundUser User
-	fmt.Println(email)
 	if err := r.col.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, err
@@ -84,7 +83,7 @@ func (r *repository) GetByEmail(ctx context.Context, email string) (*User, error
 	return &foundUser, nil
 }
 
-func (r *repository) UpdateUser(ctx context.Context, userId string, update bson.M) (*User, error) {
+func (r *repository) UpdateUserRepo(ctx context.Context, userId string, update bson.M) (*User, error) {
 
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 	var d User
@@ -98,7 +97,7 @@ func (r *repository) UpdateUser(ctx context.Context, userId string, update bson.
 	return &out, nil
 }
 
-func (r *repository) Delete(ctx context.Context, id string) error {
+func (r *repository) DeleteUserRepo(ctx context.Context, id string) error {
 	res, err := r.col.DeleteOne(ctx, bson.M{"_id": id})
 	if err != nil {
 		return err
@@ -109,7 +108,7 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *repository) GetUserCount(ctx context.Context, filter bson.M) (int, error) {
+func (r *repository) GetUserCountRepo(ctx context.Context, filter bson.M) (int, error) {
 
 	count, err := r.col.CountDocuments(ctx, filter)
 	if err != nil {
@@ -118,7 +117,7 @@ func (r *repository) GetUserCount(ctx context.Context, filter bson.M) (int, erro
 	return int(count), nil
 }
 
-func (r *repository) GetGoogleUserInfo(ctx context.Context, accessToken string) (map[string]interface{}, error) {
+func (r *repository) GetGoogleUserInfoRepo(ctx context.Context, accessToken string) (map[string]interface{}, error) {
 	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
 	if err != nil {
 		return nil, err

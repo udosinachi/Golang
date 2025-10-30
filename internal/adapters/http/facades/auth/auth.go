@@ -22,7 +22,7 @@ func NewFacade(service userService.Server, middlewares middlewares.Middlewares, 
 	}
 }
 
-func (f Facade) Register(r *gin.RouterGroup) {
+func (f *Facade) Register(r *gin.RouterGroup) {
 
 	r.POST("/auth/login", f.Login)
 	r.POST("/auth/signup", f.Signup)

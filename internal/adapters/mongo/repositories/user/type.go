@@ -32,12 +32,12 @@ func (u *User) ValidateUser() error {
 
 // var UserCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
 type Repository interface {
-	GetAllUsers(ctx context.Context, page int, pageSize int, filter bson.M) ([]User, error)
-	GetUserByID(ctx context.Context, id string) (*User, error)
-	GetByEmail(ctx context.Context, email string) (*User, error)
-	Create(ctx context.Context, u User) (*User, error)
-	UpdateUser(ctx context.Context, userId string, update bson.M) (*User, error)
-	Delete(ctx context.Context, id string) error
-	GetUserCount(ctx context.Context, filter bson.M) (int, error)
-	GetGoogleUserInfo(ctx context.Context, accessToken string) (map[string]interface{}, error)
+	GetAllUsersRepo(ctx context.Context, page int, pageSize int, filter bson.M) ([]User, error)
+	GetUserByIDRepo(ctx context.Context, id string) (*User, error)
+	GetByEmailRepo(ctx context.Context, email string) (*User, error)
+	CreateUserRepo(ctx context.Context, u User) (*User, error)
+	UpdateUserRepo(ctx context.Context, userId string, update bson.M) (*User, error)
+	DeleteUserRepo(ctx context.Context, id string) error
+	GetUserCountRepo(ctx context.Context, filter bson.M) (int, error)
+	GetGoogleUserInfoRepo(ctx context.Context, accessToken string) (map[string]interface{}, error)
 }

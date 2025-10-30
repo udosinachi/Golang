@@ -6,20 +6,36 @@ import (
 	"os"
 	repo "udo-golang/internal/adapters/mongo/repositories/user"
 	commonErrors "udo-golang/internal/common/errors"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 type server struct {
 	userRepo repo.Repository
 }
 
-func NewServer(userRepo repo.Repository) Server {
+func NewUserService(userRepo repo.Repository) Server {
 	return &server{userRepo}
 }
 
 var SECRET_KEY string = os.Getenv("SECRET_KEY")
 
+func (s *server) AllUsers(ctx context.Context, page, pageSize int) ([]repo.User, int64, error) {
+	users, err := s.userRepo.GetAllUsersRepo(ctx, page, pageSize, bson.M{})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	count, err := s.userRepo.GetUserCountRepo(ctx, bson.M{})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return users, int64(count), nil
+}
+
 func (s *server) Create(c context.Context, u repo.User) (*repo.User, error) {
-	_, err := s.userRepo.GetByEmail(c, u.Email)
+	_, err := s.userRepo.GetByEmailRepo(c, u.Email)
 
 	if err != nil {
 		return nil, err
@@ -29,7 +45,7 @@ func (s *server) Create(c context.Context, u repo.User) (*repo.User, error) {
 		return nil, commonErrors.ErrShortPassword
 	}
 
-	user, err := s.userRepo.Create(c, u)
+	user, err := s.userRepo.CreateUserRepo(c, u)
 
 	if err != nil {
 		return nil, err
@@ -44,19 +60,13 @@ func (s *server) GetByID(ctx context.Context, id string) (*repo.User, error) {
 		return nil, errors.New("ID is required")
 	}
 
-	user, err := s.userRepo.GetUserByID(ctx, id)
+	user, err := s.userRepo.GetUserByIDRepo(ctx, id)
 
 	if err != nil {
 		return nil, err
 	}
 
 	return user, err
-}
-
-func (s *server) List(ctx context.Context) ([]repo.User, int64, error) {
-	var users = make([]repo.User, 5)
-
-	return users, 7, nil
 }
 
 func (s *server) GetUser(ctx context.Context) (repo.User, error) {

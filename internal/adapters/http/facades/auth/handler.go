@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"time"
 	"udo-golang/internal/adapters/http/common"
 	repo "udo-golang/internal/adapters/mongo/repositories/user"
 	authService "udo-golang/internal/services/auth"
@@ -9,8 +10,8 @@ import (
 )
 
 type authResponse struct {
-	user  repo.User
-	token string
+	User  repo.User `json:"user"`
+	Token string    `json:"token"`
 }
 
 func (f *Facade) Login(c *gin.Context) {
@@ -19,19 +20,19 @@ func (f *Facade) Login(c *gin.Context) {
 	err := c.BindJSON(&user)
 
 	if err != nil {
-		common.SendNotFound(c, err.Error())
+		common.SendBadRequest(c, err.Error())
 		return
 	}
 
 	fetchedUser, token, err := f.auth.Login(c, user)
 	if err != nil {
-		common.SendNotFound(c, err.Error())
+		common.SendBadRequest(c, err.Error())
 		return
 	}
 
 	response := authResponse{
-		user:  *fetchedUser,
-		token: *token,
+		User:  *fetchedUser,
+		Token: *token,
 	}
 
 	common.SendOk(c, response, "Request Successful")
@@ -40,31 +41,30 @@ func (f *Facade) Login(c *gin.Context) {
 
 func (f *Facade) Signup(c *gin.Context) {
 
-	var user repo.User
-	err := c.BindJSON(&user)
-
-	if err != nil {
-		common.SendNotFound(c, err.Error())
+	var body authService.SignUpDto
+	if err := c.BindJSON(&body); err != nil {
+		common.SendBadRequest(c, err.Error())
 		return
 	}
 
-	bodySignup := authService.SignUpDto{
-		Email:     user.Email,
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
-		IsAdmin:   user.IsAdmin,
-		Password:  user.Password,
+	user := repo.User{
+		FirstName: body.FirstName,
+		LastName:  body.LastName,
+		Email:     body.Email,
+		Password:  body.Password,
+		IsAdmin:   body.IsAdmin,
+		CreatedAt: time.Now(),
 	}
 
-	fetchedUser, token, err := f.auth.Signup(c, &user, bodySignup)
+	fetchedUser, token, err := f.auth.Signup(c, &user, body)
 	if err != nil {
-		common.SendNotFound(c, err.Error())
+		common.SendBadRequest(c, err.Error())
 		return
 	}
 
 	response := authResponse{
-		user:  *fetchedUser,
-		token: *token,
+		User:  *fetchedUser,
+		Token: *token,
 	}
 
 	common.SendOk(c, response, "Request Successful")

@@ -6,6 +6,7 @@ import (
 
 	"udo-golang/internal/adapters/http/common"
 	"udo-golang/internal/adapters/http/facades/auth"
+	"udo-golang/internal/adapters/http/facades/user"
 	middlewares "udo-golang/internal/adapters/http/middleware"
 	authService "udo-golang/internal/services/auth"
 	userService "udo-golang/internal/services/user"
@@ -39,6 +40,7 @@ func NewServer(userService userService.Server, authService authService.Service) 
 
 	facades := []Facade{
 		auth.NewFacade(userService, *middlewares, authService),
+		user.NewFacade(userService, *middlewares),
 	}
 
 	for _, f := range facades {
