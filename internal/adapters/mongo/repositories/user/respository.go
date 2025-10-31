@@ -24,6 +24,14 @@ func NewUserRepository(db *mongo.Database) Repository {
 	return &repository{col: db.Collection("users")}
 }
 
+func toObjectID(id string) (primitive.ObjectID, error) {
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return primitive.NilObjectID, fmt.Errorf("invalid ObjectID: %w", err)
+	}
+	return objID, nil
+}
+
 func (r *repository) GetAllUsersRepo(ctx context.Context, page int, pageSize int, filter bson.M) ([]User, error) {
 
 	skip := (page - 1) * pageSize
@@ -48,15 +56,19 @@ func (r *repository) GetAllUsersRepo(ctx context.Context, page int, pageSize int
 }
 
 func (r *repository) GetUserByIDRepo(ctx context.Context, id string) (*User, error) {
+	objID, err := toObjectID(id)
+	if err != nil {
+		return nil, err
+	}
+
 	var foundUser User
-	if err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&foundUser); err != nil {
+	if err := r.col.FindOne(ctx, bson.M{"_id": objID}).Decode(&foundUser); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, err
+			return nil, fmt.Errorf("user not found")
 		}
 		return nil, err
 	}
-	user := foundUser
-	return &user, nil
+	return &foundUser, nil
 }
 
 func (r *repository) CreateUserRepo(ctx context.Context, u User) (*User, error) {
@@ -76,7 +88,7 @@ func (r *repository) GetByEmailRepo(ctx context.Context, email string) (*User, e
 	var foundUser User
 	if err := r.col.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, err
+			return nil, fmt.Errorf("user not found")
 		}
 		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
@@ -85,11 +97,18 @@ func (r *repository) GetByEmailRepo(ctx context.Context, email string) (*User, e
 
 func (r *repository) UpdateUserRepo(ctx context.Context, userId string, update bson.M) (*User, error) {
 
+	objID, err := primitive.ObjectIDFromHex(userId)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	updateDoc := bson.M{"$set": update}
+
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 	var d User
-	if err := r.col.FindOneAndUpdate(ctx, bson.M{"_id": userId}, update, opts).Decode(&d); err != nil {
+	if err := r.col.FindOneAndUpdate(ctx, bson.M{"_id": objID}, updateDoc, opts).Decode(&d); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, err
+			return nil, fmt.Errorf("user not found")
 		}
 		return nil, err
 	}
@@ -98,7 +117,12 @@ func (r *repository) UpdateUserRepo(ctx context.Context, userId string, update b
 }
 
 func (r *repository) DeleteUserRepo(ctx context.Context, id string) error {
-	res, err := r.col.DeleteOne(ctx, bson.M{"_id": id})
+	objID, err := toObjectID(id)
+	if err != nil {
+		return err
+	}
+
+	res, err := r.col.DeleteOne(ctx, bson.M{"_id": objID})
 	if err != nil {
 		return err
 	}

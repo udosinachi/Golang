@@ -21,4 +21,7 @@ func NewFacade(service userService.Server, middlewares middlewares.Middlewares) 
 
 func (f Facade) Register(r *gin.RouterGroup) {
 	r.GET("/users", f.GetAllUsers)
+	r.GET("/users/:id", f.GetUsersById)
+	r.DELETE("/delete-user/:id", f.DeleteUserById)
+	r.PUT("/update-user/:id", f.UpdateUserById)
 }

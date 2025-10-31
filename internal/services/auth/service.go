@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type service struct {
@@ -40,9 +39,6 @@ func (s *service) Signup(ctx context.Context, u *repo.User, body SignUpDto) (*re
 	existingUser, err := s.userRepo.GetByEmailRepo(ctx, u.Email)
 	if err == nil && existingUser != nil {
 		return nil, nil, errors.New("email already in use")
-	}
-	if err != nil && err != mongo.ErrNoDocuments {
-		return nil, nil, err
 	}
 
 	u.ID = primitive.NewObjectID()
